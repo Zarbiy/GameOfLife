@@ -1,4 +1,4 @@
-from PyQt6.QtWidgets import QApplication, QGraphicsView, QGraphicsScene, QLabel, QPushButton, QGraphicsRectItem, QFileDialog
+from PyQt6.QtWidgets import QApplication, QGraphicsView, QGraphicsScene, QLabel, QPushButton, QGraphicsRectItem, QFileDialog, QLineEdit
 from PyQt6.QtGui import QBrush, QColor, QPainter
 from PyQt6.QtCore import Qt, QTimer
 
@@ -58,6 +58,25 @@ class MainWindow(QGraphicsView):
         self.last_mouse_pos = None
         self.setMouseTracking(True)
 
+        self.init_button()
+        self.init_speed_button()
+        self.init_input_rules()
+
+        self.pop_label = QLabel(self)
+        self.pop_label.setStyleSheet("background-color: rgba(0,0,0,0.5); color: white; padding: 3px; border-radius: 5px;")
+        self.pop_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.pop_label.setText("Pop: 0")
+        self.pop_label.adjustSize()
+
+        self.pop_label.move(5, self.height() - self.pop_label.height() - 15)
+
+        self.draw_grid()
+
+        self.timer = QTimer()
+        self.timer.setInterval(int(self.interval / self.speed_factor))
+        self.timer.timeout.connect(self.update_grid)
+
+    def init_button(self):
         self.pause_button = QPushButton("Play", self)
         self.pause_button.clicked.connect(self.toggle_pause)
         self.pause_button.setGeometry(25, 25, 120, 50)
@@ -74,6 +93,7 @@ class MainWindow(QGraphicsView):
         self.grid_button.clicked.connect(self.action_grid)
         self.grid_button.setGeometry(25, 175, 120, 50)
 
+    def init_speed_button(self):
         self.speed_up_btn = QPushButton("+", self)
         self.speed_up_btn.setGeometry(50, 160, 45, 45)
         self.speed_up_btn.clicked.connect(self.increase_speed)
@@ -91,19 +111,24 @@ class MainWindow(QGraphicsView):
         self.speed_down_btn.move(self.width() - self.speed_down_btn.width() * 2 - margin - 5, margin)
         self.speed_label.move(self.width() - self.speed_label.width() - margin, self.speed_up_btn.height() + margin + 5)
 
-        self.pop_label = QLabel(self)
-        self.pop_label.setStyleSheet("background-color: rgba(0,0,0,0.5); color: white; padding: 3px; border-radius: 5px;")
-        self.pop_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.pop_label.setText("Pop: 0")
-        self.pop_label.adjustSize()
+    def init_input_rules(self):
+        self.rule_label = QLabel("Rules:", self)
+        self.rule_label.setGeometry(25, 275, 120, 30)
+        self.rule_label.setStyleSheet("color: white; background-color: rgba(0,0,0,0.5); padding: 3px;")
 
-        self.pop_label.move(5, self.height() - self.pop_label.height() - 15)
+        self.stay_alive_input = QLineEdit(self)
+        self.stay_alive_input.setGeometry(25, 310, 120, 30)
+        self.stay_alive_input.setPlaceholderText("Stay alive (ex: 2,3)")
+        self.stay_alive_input.setText(",".join(map(str, self.nb_stay_alive)))
 
-        self.draw_grid()
+        self.birth_input = QLineEdit(self)
+        self.birth_input.setGeometry(25, 345, 120, 30)
+        self.birth_input.setPlaceholderText("Birth (ex: 3)")
+        self.birth_input.setText(str(self.nb_become_alive))
 
-        self.timer = QTimer()
-        self.timer.setInterval(int(self.interval / self.speed_factor))
-        self.timer.timeout.connect(self.update_grid)
+        self.apply_rules_btn = QPushButton("Apply rules", self)
+        self.apply_rules_btn.setGeometry(25, 380, 120, 35)
+        self.apply_rules_btn.clicked.connect(self.apply_new_rules)
 
     def increase_speed(self):
         self.speed_factor = min(20, self.speed_factor + 0.5)
@@ -144,6 +169,61 @@ class MainWindow(QGraphicsView):
             self.grid_button.setText("Remove grid")
         self.show_grid = not self.show_grid
         self.draw_grid()
+
+    def apply_new_rules(self):
+        def reset_val(self, old_st, old_b):
+            self.nb_stay_alive = old_st
+            self.nb_become_alive = old_b
+
+            self.stay_alive_input.setText(",".join(map(str, self.nb_stay_alive)))
+            self.birth_input.setText(str(self.nb_become_alive))
+        old_stay_alive = self.nb_stay_alive.copy()
+        old_birth = self.nb_become_alive
+        try:
+            stay_alive_text = self.stay_alive_input.text().replace(" ", "")
+
+            if not stay_alive_text:
+                self.stay_alive_input.setStyleSheet("border: 2px solid red; border-radius: 2px")
+                print("Error values")
+                return
+
+            new_stay_alive = [int(x) for x in stay_alive_text.split(",") if x.isdigit()]
+
+            if not new_stay_alive:
+                self.stay_alive_input.setStyleSheet("border: 2px solid red; border-radius: 2px")
+                print("Error values")
+                return
+
+            self.nb_stay_alive = new_stay_alive
+            self.stay_alive_input.setStyleSheet("")
+
+        except Exception as e:
+            print(f"Error update : {e}")
+            self.stay_alive_input.setStyleSheet("border: 2px solid red; border-radius: 2px")
+            reset_val(self, old_stay_alive, old_birth)
+
+        try:
+            birth_text = self.birth_input.text().strip()
+
+            if not birth_text:
+                self.birth_input.setStyleSheet("border: 2px solid red; border-radius: 2px")
+                print("Error values")
+                return
+            
+            new_birth = int(birth_text)
+
+            if new_birth < 0:
+                self.birth_input.setStyleSheet("border: 2px solid red; border-radius: 2px")
+                print("Error values")
+                return
+
+            self.nb_become_alive = new_birth
+            self.birth_input.setStyleSheet("")
+
+        except Exception as e:
+            print(f"Error update : {e}")
+            self.birth_input.setStyleSheet("border: 2px solid red; border-radius: 2px")
+            reset_val(self, old_stay_alive, old_birth)
 
 
     def import_pattern(self):
@@ -305,6 +385,7 @@ class MainWindow(QGraphicsView):
             else:
                 self.alive_cells.add(cell)
             self.draw_grid()
+            self.update_pop_label()
             # print(f"clic cellule : {cell}")
 
     def mouseMoveEvent(self, event):
