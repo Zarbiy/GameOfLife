@@ -23,7 +23,7 @@ Le projet permet de créer, importer et observer des motifs vivants évoluer sel
 ## Installation
 
 ```bash
-cd life-is-a-game
+cd gameoflife
 python3 -m venv venv
 source venv/bin/activate
 pip install -r req.txt
