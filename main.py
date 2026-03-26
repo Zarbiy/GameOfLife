@@ -1,8 +1,9 @@
 from PyQt6.QtWidgets import QApplication, QGraphicsView, QGraphicsScene, QLabel, QPushButton, QGraphicsRectItem, QFileDialog, QLineEdit
-from PyQt6.QtGui import QBrush, QColor, QPainter
+from PyQt6.QtGui import QBrush, QColor, QPainter, QPixmap
 from PyQt6.QtCore import Qt, QTimer
 
 import sys
+import numpy as np
 
 from collections import Counter
 
@@ -32,6 +33,7 @@ class MainWindow(QGraphicsView):
         super().__init__()
         self.setWindowTitle("Life is a game")
         self.resize(1000, 1000)
+        self.setMinimumSize(600, 600)
 
         self.cell_size = 40
         self.cam_x = 0
@@ -45,15 +47,15 @@ class MainWindow(QGraphicsView):
         self.running = False
         self.show_grid = True
 
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+
         self.scene = QGraphicsScene()
         self.setScene(self.scene)
 
         self.alive_cells = set()
-        self.nb_stay_alive = n_cell_to_stay_alive
+        self.nb_stay_alive = set(n_cell_to_stay_alive)
         self.nb_become_alive = n_cell_to_birth
-
-        self.setRenderHint(QPainter.RenderHint.Antialiasing)
-        self.setDragMode(self.DragMode.ScrollHandDrag)
 
         self.last_mouse_pos = None
         self.setMouseTracking(True)
@@ -184,6 +186,7 @@ class MainWindow(QGraphicsView):
 
             if not stay_alive_text:
                 self.stay_alive_input.setStyleSheet("border: 2px solid red; border-radius: 2px")
+                reset_val(self, old_stay_alive, old_birth)
                 print("Error values")
                 return
 
@@ -191,10 +194,11 @@ class MainWindow(QGraphicsView):
 
             if not new_stay_alive:
                 self.stay_alive_input.setStyleSheet("border: 2px solid red; border-radius: 2px")
+                reset_val(self, old_stay_alive, old_birth)
                 print("Error values")
                 return
 
-            self.nb_stay_alive = new_stay_alive
+            self.nb_stay_alive = set(new_stay_alive)
             self.stay_alive_input.setStyleSheet("")
 
         except Exception as e:
@@ -207,6 +211,7 @@ class MainWindow(QGraphicsView):
 
             if not birth_text:
                 self.birth_input.setStyleSheet("border: 2px solid red; border-radius: 2px")
+                reset_val(self, old_stay_alive, old_birth)
                 print("Error values")
                 return
             
@@ -214,6 +219,7 @@ class MainWindow(QGraphicsView):
 
             if new_birth < 0:
                 self.birth_input.setStyleSheet("border: 2px solid red; border-radius: 2px")
+                reset_val(self, old_stay_alive, old_birth)
                 print("Error values")
                 return
 
@@ -264,9 +270,12 @@ class MainWindow(QGraphicsView):
         self.update_pop_label()
 
     def draw_grid(self):
-        self.scene.clear()
         width = self.viewport().width()
         height = self.viewport().height()
+
+        pixmap = QPixmap(width, height)
+        pixmap.fill(QColor(220, 220, 220))
+        painter = QPainter(pixmap)
 
         cols = width // self.cell_size + 2
         rows = height // self.cell_size + 2
@@ -274,49 +283,51 @@ class MainWindow(QGraphicsView):
         offset_y = self.cam_y % self.cell_size
 
         if self.show_grid:
-            for x in range(0, cols):
+            painter.setPen(QColor(*colors["LIGHT_GREY"]))
+            for x in range(cols):
                 x_pos = x * self.cell_size - offset_x
-                self.scene.addLine(x_pos, 0, x_pos, height, QColor(*colors["LIGHT_GREY"]))
-
-            for y in range(0, rows):
+                painter.drawLine(int(x_pos), 0, int(x_pos), height)
+            for y in range(rows):
                 y_pos = y * self.cell_size - offset_y
-                self.scene.addLine(0, y_pos, width, y_pos, QColor(*colors["LIGHT_GREY"]))
+                painter.drawLine(0, int(y_pos), width, int(y_pos))
 
+        painter.setPen(QColor(*colors["WHITE"]))
+        painter.setBrush(QBrush(QColor(*colors["BLACK"])))
         for x, y in self.alive_cells:
-            screen_x = (x * self.cell_size) - self.cam_x
-            screen_y = (y * self.cell_size) - self.cam_y
-            if 0 <= screen_x < width and 0 <= screen_y < height:
-                rect = QGraphicsRectItem(screen_x, screen_y, self.cell_size, self.cell_size)
-                rect.setBrush(QBrush(QColor(*colors["PURPLE"])))
-                rect.setPen(QColor(*colors["BLACK"]))
-                self.scene.addItem(rect)
+            screen_x = int((x * self.cell_size) - self.cam_x)
+            screen_y = int((y * self.cell_size) - self.cam_y)
+            if -self.cell_size <= screen_x < width and -self.cell_size <= screen_y < height:
+                painter.drawRect(screen_x, screen_y, self.cell_size, self.cell_size)
 
-    def checkNeighboor(self, x = None, y = None):
-        directions = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
+        painter.end()
+        self.scene.clear()
+        self.scene.addPixmap(pixmap)
 
-        count_CellAlive = 0
-        if x == None or y == None:
-            counts = Counter()
-            for x, y in self.alive_cells:
-                for dx, dy in directions:
-                    counts[(x + dx, y + dy)] += 1
+    def checkNeighboor(self):
+        if not self.alive_cells:
+            return
 
-            new_alive = set()
+        cells = np.array(list(self.alive_cells))
+        directions = np.array([(-1,-1),(-1,0),(-1,1),(0,-1),(0,1),(1,-1),(1,0),(1,1)])
 
-            for cell, n in counts.items():
-                # print(f"{cell} Voisins alive: {n}")
-                if cell in self.alive_cells and n in self.nb_stay_alive:
-                    new_alive.add(cell)
-                elif cell not in self.alive_cells and n == self.nb_become_alive:
-                    new_alive.add(cell)
-            self.alive_cells = new_alive
-        else:
-            count_CellAlive = 0
-            for i, j in directions:
-                if (x + i, y + j) in self.alive_cells:
-                    count_CellAlive += 1
-            print(f"{x, y} Voisins alive: {count_CellAlive}") if count_CellAlive > 0 else None
-            print("-"*20) if count_CellAlive > 0 else None
+        all_neighbors = (cells[:, None, :] + directions[None, :, :]).reshape(-1, 2)
+        counts = Counter(map(tuple, all_neighbors))
+
+        new_alive = set()
+        for cell, n in counts.items():
+            if cell in self.alive_cells and n in self.nb_stay_alive:
+                new_alive.add(cell)
+            elif cell not in self.alive_cells and n == self.nb_become_alive:
+                new_alive.add(cell)
+
+        self.alive_cells = new_alive
+
+    def checkNeighboorDebug(self, x, y):
+        directions = [(-1,-1),(-1,0),(-1,1),(0,-1),(0,1),(1,-1),(1,0),(1,1)]
+        count = sum(1 for dx, dy in directions if (x+dx, y+dy) in self.alive_cells)
+        if count > 0:
+            print(f"{x, y} Voisins alive: {count}")
+            print("-" * 20)
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_A:
@@ -376,7 +387,7 @@ class MainWindow(QGraphicsView):
         cell = (cell_x, cell_y)
 
         if event.button() == Qt.MouseButton.LeftButton and self.key_press["s_press"]:
-            self.checkNeighboor(cell_x, cell_y)
+            self.checkNeighboorDebug(cell_x, cell_y)
         elif event.button() == Qt.MouseButton.LeftButton:
             self.last_mouse_pos = pos
         if event.button() == Qt.MouseButton.RightButton:
